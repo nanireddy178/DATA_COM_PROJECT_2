@@ -1,0 +1,75 @@
+import socket
+import sys
+import threading
+
+# Check if the correct number of command line arguments is provided
+if len(sys.argv) != 3:
+    print("Usage: python server.py lan-name num-ports")
+    sys.exit(1)
+
+lan_name = sys.argv[1]
+num_ports = int(sys.argv[2])
+
+# Determine the local IP address dynamically
+lan_ip = socket.gethostbyname(socket.gethostname())
+
+# Create a socket object
+server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+# Bind the socket to a specific address and port
+server_socket.bind((lan_ip, 0))  # Use port 0 to let the OS choose an available port
+address, port = server_socket.getsockname()
+
+# Create text files for LAN name, address, and port
+with open(f"{lan_name}.addr", 'w') as addr_file:
+    addr_file.write(lan_ip)
+
+with open(f"{lan_name}.port", 'w') as port_file:
+    port_file.write(str(port))
+
+with open("lan_name", 'w') as lan_file:
+    lan_file.write(lan_name)
+
+# Listen for incoming connections
+server_socket.listen(num_ports)
+
+print(f"Server is listening on {address}:{port} for {num_ports} ports...")
+
+connections = []
+
+def accept_connection(server_socket, num_ports):
+    # Accept a connection
+    client_socket, client_address = server_socket.accept()
+    print(f"Connection from {client_address}")
+
+    # Check if the number of connections exceeds num_ports
+    if len(connections) >= num_ports:
+        print("Rejecting connection: Maximum number of connections reached.")
+        client_socket.send("reject".encode('utf-8'))
+        client_socket.close()
+    else:
+        # Add the client socket to the list of connections
+        connections.append(client_socket)
+        print(f"Accepted connection. {len(connections)} out of {num_ports} connections.")
+        client_socket.send("accept".encode('utf-8'))
+        # Handle the connection in a separate thread
+        threading.Thread(target=handle_client, args=(client_socket,)).start()
+
+def handle_client(client_socket):
+    try:
+        print("Accepted connection.")
+        data = client_socket.recv(1024).decode('utf-8')
+        print(f"Received data: {data}")
+        client_socket.send("accept".encode('utf-8'))
+    except ConnectionResetError:
+        print("Connection reset by peer.")
+    except Exception as e:
+        print(f"Error handling client: {e}")
+    finally:
+        client_socket.close()
+
+
+
+while True:
+    # Accept or reject a connection based on the number of connections
+    accept_connection(server_socket, num_ports)
